@@ -1,0 +1,31 @@
+services:
+  edge-gateway:
+    build:
+      context: ../..
+      dockerfile: services/edge-gateway/Dockerfile
+    restart: unless-stopped
+    environment:
+      CENTRAL_API_URL: ${CENTRAL_API_URL:?Set CENTRAL_API_URL}
+      HOSPITAL_CODE: ${HOSPITAL_CODE:?Set HOSPITAL_CODE}
+      CLIENT_CERT_PATH: ${CLIENT_CERT_PATH:-}
+      CLIENT_KEY_PATH: ${CLIENT_KEY_PATH:-}
+      HOST: 0.0.0.0
+      PORT: 8080
+      MLLP_PORT: 2575
+      SPOOL_DIR: /app/data/spool
+      LOG_FILE: /app/data/gateway.log
+      HEARTBEAT_INTERVAL_MS: 30000
+    ports:
+      - "${EDGE_GATEWAY_PORT:-8080}:8080"
+      - "${MLLP_HOST_PORT:-2575}:2575"
+    volumes:
+      - edge-gateway-data:/app/data
+      - ./certs:/run/secrets:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  edge-gateway-data:

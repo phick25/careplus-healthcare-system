@@ -1,0 +1,34 @@
+{
+  "name": "healthcare-system",
+  "private": true,
+  "workspaces": [
+    "apps/web-patient",
+    "apps/web-hospital",
+    "apps/api-central",
+    "packages/database",
+    "packages/shared-types",
+    "services/edge-gateway"
+  ],
+  "scripts": {
+    "prisma:generate": "npm run prisma:generate --workspace @healthcare/database",
+    "db:seed": "npm run seed:staff --workspace @healthcare/api-central",
+    "typecheck:api-central": "npm run typecheck --workspace @healthcare/api-central",
+    "typecheck:web-patient": "npm run typecheck --workspace @healthcare/web-patient",
+    "typecheck:web-hospital": "npm run typecheck --workspace @healthcare/web-hospital",
+    "dev:all": "concurrently -n \"PATIENT,HOSPITAL\" -c \"cyan,magenta\" \"npm --prefix apps/web-patient run dev\" \"npm --prefix apps/web-hospital run dev -- -p 3001\""
+  },
+  "dependencies": {
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^12.0.11",
+    "concurrently": "^10.0.6",
+    "typescript": "^5.9.3"
+  },
+  "allowScripts": {
+    "@prisma/client@6.19.3": true,
+    "@prisma/engines": true,
+    "prisma": true
+  }
+}

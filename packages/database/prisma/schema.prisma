@@ -1,0 +1,216 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PatientGender {
+  MALE
+  FEMALE
+  OTHER
+  UNKNOWN
+}
+
+enum AuthRole {
+  PATIENT
+  HOSPITAL_ADMIN
+  RECEPTIONIST
+  DOCTOR
+}
+
+enum AppointmentStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  CHECKED_IN
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model Hospital {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique @db.VarChar(32)
+  name        String   @db.VarChar(255)
+  province    String   @db.VarChar(100)
+  provinceCode String? @db.VarChar(20)
+  district    String?  @db.VarChar(100)
+  address     String   @db.VarChar(500)
+  timeZone    String   @default("Asia/Ho_Chi_Minh") @db.VarChar(64)
+
+  // Store endpoint and non-secret settings here; keep credentials in a secrets manager.
+  edgeEnabled  Boolean @default(false)
+  edgeBaseUrl  String? @db.VarChar(2048)
+  edgeConfig   Json?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  departments Department[]
+  doctors     Doctor[]
+  staffAccounts HospitalStaffAccount[]
+  appointments Appointment[]
+  medicalRecordSummaries MedicalRecordSummary[]
+
+  @@index([province, name])
+  @@index([edgeEnabled])
+}
+
+model Department {
+  id          String   @id @default(uuid()) @db.Uuid
+  hospitalId  String   @db.Uuid
+  code        String   @db.VarChar(32)
+  name        String   @db.VarChar(150)
+  description String?  @db.Text
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
+  doctors  Doctor[]
+
+  @@unique([hospitalId, code])
+  @@index([hospitalId, name])
+  @@index([isActive])
+}
+
+model Doctor {
+  id                    String   @id @default(uuid()) @db.Uuid
+  hospitalId            String   @db.Uuid
+  departmentId           String   @db.Uuid
+  employeeCode           String?  @db.VarChar(64)
+  fullName               String   @db.VarChar(200)
+  title                  String?  @db.VarChar(120)
+  licenseNumber          String?  @unique @db.VarChar(64)
+  biography              String?  @db.Text
+  baseConsultationFee    Decimal  @db.Decimal(12, 2)
+  currency               String   @default("VND") @db.Char(3)
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime @updatedAt @db.Timestamptz(3)
+
+  hospital               Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
+  department             Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  schedules              DoctorSchedule[]
+  appointments           Appointment[]
+  medicalRecordSummaries MedicalRecordSummary[]
+
+  @@unique([hospitalId, employeeCode])
+  @@index([hospitalId, departmentId, isActive])
+  @@index([fullName])
+}
+
+model DoctorSchedule {
+  id                  String   @id @default(uuid()) @db.Uuid
+  doctorId            String   @db.Uuid
+  // ISO weekday: Monday = 1 ... Sunday = 7; validate this range in the API.
+  dayOfWeek           Int      @db.SmallInt
+  startTime           DateTime @db.Time(0)
+  endTime             DateTime @db.Time(0)
+  slotDurationMinutes Int      @db.SmallInt
+  effectiveFrom       DateTime? @db.Date
+  effectiveTo         DateTime? @db.Date
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime @updatedAt @db.Timestamptz(3)
+
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, dayOfWeek, startTime])
+  @@index([doctorId, dayOfWeek, isActive])
+}
+
+model Patient {
+  id                    String        @id @default(uuid()) @db.Uuid
+  // Normalize identifiers before persistence; CCCD is unique when provided.
+  cccd                  String?       @unique @db.VarChar(20)
+  healthInsuranceNumber String?       @unique @db.VarChar(32)
+  fullName              String        @db.VarChar(200)
+  birthDate             DateTime?     @db.Date
+  gender                PatientGender @default(UNKNOWN)
+  phoneNumber           String?       @db.VarChar(20)
+  email                 String?       @db.VarChar(320)
+  passwordHash          String?       @db.VarChar(255)
+  address               String?       @db.VarChar(500)
+  createdAt             DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime      @updatedAt @db.Timestamptz(3)
+
+  appointments           Appointment[]
+  medicalRecordSummaries MedicalRecordSummary[]
+
+  @@index([fullName, birthDate])
+  @@index([phoneNumber])
+}
+
+model HospitalStaffAccount {
+  id           String   @id @default(uuid()) @db.Uuid
+  hospitalId   String   @db.Uuid
+  email        String   @unique @db.VarChar(320)
+  passwordHash String   @db.VarChar(255)
+  role         AuthRole
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
+
+  @@index([hospitalId, role, isActive])
+}
+
+model Appointment {
+  id                    String            @id @default(uuid()) @db.Uuid
+  patientId             String            @db.Uuid
+  doctorId              String            @db.Uuid
+  hospitalId            String            @db.Uuid
+  slotStartTime         DateTime          @db.Timestamptz(3)
+  slotEndTime           DateTime          @db.Timestamptz(3)
+  status                AppointmentStatus @default(PENDING_PAYMENT)
+  // Redis lock is a temporary reservation aid, not the durable overlap constraint.
+  redisLockKey          String?           @unique @db.VarChar(255)
+  holdExpiresAt         DateTime?         @db.Timestamptz(3)
+  idempotencyKey        String?           @unique @db.VarChar(128)
+  preliminaryReason    String?           @db.Text
+  cancellationReason   String?           @db.VarChar(255)
+  externalAppointmentId String?           @db.VarChar(128)
+  createdAt             DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime          @updatedAt @db.Timestamptz(3)
+
+  patient Patient  @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  doctor  Doctor   @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
+  medicalRecordSummary MedicalRecordSummary?
+
+  @@index([doctorId, slotStartTime])
+  @@index([hospitalId, slotStartTime, status])
+  @@index([patientId, createdAt])
+  @@index([status, holdExpiresAt])
+  @@unique([hospitalId, externalAppointmentId])
+}
+
+model MedicalRecordSummary {
+  id             String   @id @default(uuid()) @db.Uuid
+  appointmentId  String   @unique @db.Uuid
+  patientId      String   @db.Uuid
+  doctorId       String   @db.Uuid
+  hospitalId     String   @db.Uuid
+  icd10Code      String   @db.VarChar(16)
+  icd10System    String   @default("http://hl7.org/fhir/sid/icd-10") @db.VarChar(255)
+  diagnosis      String   @db.VarChar(500)
+  doctorNotes    String?  @db.Text
+  // FHIR Attachment-shaped JSON metadata; binary content belongs in encrypted object storage.
+  attachments    Json     @default("[]")
+  shareConsentAt DateTime? @db.Timestamptz(3)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  patient     Patient     @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  doctor      Doctor      @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  hospital    Hospital    @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
+
+  @@index([patientId, createdAt])
+  @@index([hospitalId, createdAt])
+  @@index([icd10Code])
+}

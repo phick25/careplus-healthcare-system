@@ -1,0 +1,15 @@
+{
+  "name": "@healthcare/database",
+  "private": true,
+  "scripts": {
+    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
+    "prisma:validate": "prisma validate --schema prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3"
+  },
+  "devDependencies": {
+    "effect": "3.21.0",
+    "prisma": "^6.19.0"
+  }
+}

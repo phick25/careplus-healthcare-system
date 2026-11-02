@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # 1. Cơ sở dữ liệu PostgreSQL
+  postgres:
+    image: postgres:16-alpine
+    container_name: healthcare-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: healthcare_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d healthcare_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. Redis Distributed Cache & Lock
+  redis:
+    image: redis:7-alpine
+    container_name: healthcare-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 3. Central Backend API (NestJS)
+  api-central:
+    build:
+      context: .
+      dockerfile: apps/api-central/Dockerfile
+    container_name: healthcare-api-central
+    restart: always
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      DATABASE_URL: "postgresql://postgres:postgrespassword@postgres:5432/healthcare_db?schema=public"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PAYMENT_CALLBACK_SECRET: "MySuperSecretPaymentKey2026VNPaySecure"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # 4. Cổng đặt lịch Bệnh nhân (Next.js - Patient Portal)
+  web-patient:
+    build:
+      context: .
+      dockerfile: apps/web-patient/Dockerfile
+    container_name: healthcare-web-patient
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost:4000"
+    depends_on:
+      - api-central
+
+  # 5. Cổng Bác sĩ & Quản trị Viện (Next.js - Hospital Portal)
+  web-hospital:
+    build:
+      context: .
+      dockerfile: apps/web-hospital/Dockerfile
+    container_name: healthcare-web-hospital
+    restart: always
+    ports:
+      - "3001:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost:4000"
+    depends_on:
+      - api-central
+
+  # 6. Edge Gateway (HIS/LIS Adapter)
+  edge-gateway:
+    build:
+      context: ./services/edge-gateway
+      dockerfile: Dockerfile
+    container_name: healthcare-edge-gateway
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      PORT: 5000
+      CENTRAL_API_URL: "http://api-central:4000"
+      HOSPITAL_CODE: "BV_CANTHO_01"
+    depends_on:
+      - api-central
+
+volumes:
+  postgres_data:
+  redis_data:

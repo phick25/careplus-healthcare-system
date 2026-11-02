@@ -1,0 +1,14 @@
+{
+  "name": "@healthcare/edge-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/services/edge-gateway/src/index.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.15",
+    "typescript": "^5.9.3"
+  }
+}
